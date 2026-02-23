@@ -1,6 +1,0 @@
-com\payslip\aggregator\PayslipResult.class
-com\payslip\aggregator\ReportGenerator$WeekData.class
-com\payslip\aggregator\ReportGenerator.class
-com\payslip\aggregator\HoursParser.class
-com\payslip\aggregator\PdfTextExtractor.class
-com\payslip\aggregator\PayslipHoursAggregator.class
