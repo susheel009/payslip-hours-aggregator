@@ -1,5 +1,6 @@
-package com.payslip.aggregator;
+package com.payslip.aggregator.parser;
 
+import com.payslip.aggregator.model.PayslipResult;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
@@ -15,32 +16,6 @@ import java.util.regex.Pattern;
  * Uses a broad set of regex patterns to handle different payslip formats.
  */
 public class HoursParser {
-
-    // ========================= HOURS PATTERNS =========================
-
-    // Pattern: "Total Hours: 40.00", "Hours Worked: 37.5", "Hrs Worked 40"
-    private static final Pattern TOTAL_HOURS_PATTERN = Pattern.compile(
-            "(?i)(?:total\\s+hours|hours?\\s+worked|hrs\\s+worked|total\\s+hrs)\\s*:?\\s*(\\d+\\.?\\d*)");
-
-    // Pattern: "Regular Hours: 80.00", "Reg Hours: 40", "Regular Hrs 40.00"
-    private static final Pattern REGULAR_HOURS_PATTERN = Pattern.compile(
-            "(?i)(?:regular\\s+hours?|reg(?:ular)?\\s+hrs?|standard\\s+hours?|normal\\s+hours?|base\\s+hours?)\\s*:?\\s*(\\d+\\.?\\d*)");
-
-    // Pattern: "Overtime Hours: 8.00", "OT Hours: 4", "O/T Hrs 8.50"
-    private static final Pattern OVERTIME_HOURS_PATTERN = Pattern.compile(
-            "(?i)(?:overtime\\s+hours?|over\\s*time\\s+hrs?|o/?t\\s+hours?|o/?t\\s+hrs?|ot\\s+hours?)\\s*:?\\s*(\\d+\\.?\\d*)");
-
-    // Pattern: "HOURS 37.5" (standalone label)
-    private static final Pattern HOURS_LABEL_PATTERN = Pattern.compile(
-            "(?i)(?:^|\\s)hours?\\s*:?\\s+(\\d+\\.?\\d*)(?:\\s|$)");
-
-    // Pattern for tabular: "Regular 80.00" on its own, or "REG 40.00"
-    private static final Pattern TABULAR_REG_PATTERN = Pattern.compile(
-            "(?i)(?:^|\\s)(?:regular|reg)\\s+(\\d+\\.?\\d*)");
-
-    // Pattern for tabular OT: "OT 8.00", "Overtime 12.50"
-    private static final Pattern TABULAR_OT_PATTERN = Pattern.compile(
-            "(?i)(?:^|\\s)(?:overtime|o/?t)\\s+(\\d+\\.?\\d*)");
 
     // ========================= DATE PATTERNS =========================
 
@@ -98,92 +73,72 @@ public class HoursParser {
         double regularHours = 0;
         double overtimeHours = 0;
         double totalHours = 0;
-        boolean foundTotal = false;
-        boolean foundRegular = false;
 
         String[] lines = text.split("\\r?\\n");
+        boolean expectingColumnNumbers = false;
 
         for (String line : lines) {
             String trimmedLine = line.trim();
             if (trimmedLine.isEmpty())
                 continue;
 
-            // Try total hours
-            Matcher m = TOTAL_HOURS_PATTERN.matcher(trimmedLine);
-            if (m.find()) {
-                double val = Double.parseDouble(m.group(1));
-                if (val > 0) {
-                    totalHours += val;
-                    foundTotal = true;
-                    matchedLines.add("[TOTAL] " + trimmedLine);
-                    continue;
-                }
+            String lowerLine = trimmedLine.toLowerCase();
+
+            // Check if this line looks like a header for an hours column
+            if (lowerLine.equals("hours") || lowerLine.equals("hrs") || lowerLine.contains("hours")
+                    || lowerLine.contains("hrs")) {
+                expectingColumnNumbers = true;
             }
 
-            // Try regular hours
-            m = REGULAR_HOURS_PATTERN.matcher(trimmedLine);
-            if (m.find()) {
-                double val = Double.parseDouble(m.group(1));
-                if (val > 0) {
+            // Keyword based extraction
+            if (lowerLine.contains("total") && (lowerLine.contains("hours") || lowerLine.contains("hrs"))) {
+                Double val = extractFirstNumber(trimmedLine);
+                if (val != null && val > 0) {
+                    totalHours += val;
+                    matchedLines.add("[TOTAL] " + trimmedLine);
+                }
+            } else if ((lowerLine.contains("regular") || lowerLine.contains("reg") || lowerLine.contains("standard")
+                    || lowerLine.contains("normal") || lowerLine.contains("base"))
+                    && (lowerLine.contains("hours") || lowerLine.contains("hrs") || lowerLine.matches(".*\\d+.*"))) {
+                Double val = extractFirstNumber(trimmedLine);
+                if (val != null && val > 0 && val <= 744) {
                     regularHours += val;
-                    foundRegular = true;
                     matchedLines.add("[REG] " + trimmedLine);
                 }
-            }
-
-            // Try overtime hours (may be on same line as regular)
-            m = OVERTIME_HOURS_PATTERN.matcher(trimmedLine);
-            if (m.find()) {
-                double val = Double.parseDouble(m.group(1));
-                if (val > 0) {
+            } else if ((lowerLine.contains("overtime") || lowerLine.contains("over time") || lowerLine.contains("o/t")
+                    || lowerLine.contains("ot"))
+                    && (lowerLine.contains("hours") || lowerLine.contains("hrs") || lowerLine.matches(".*\\d+.*"))) {
+                Double val = extractFirstNumber(trimmedLine);
+                if (val != null && val > 0 && val <= 200) {
                     overtimeHours += val;
                     matchedLines.add("[OT] " + trimmedLine);
                 }
-            }
-
-            // Try tabular regular
-            if (!foundRegular) {
-                m = TABULAR_REG_PATTERN.matcher(trimmedLine);
-                if (m.find()) {
-                    double val = Double.parseDouble(m.group(1));
-                    if (val > 0 && val <= 744) { // max hours in a month
-                        regularHours += val;
-                        foundRegular = true;
-                        matchedLines.add("[REG-TAB] " + trimmedLine);
-                    }
+            } else if (lowerLine.startsWith("hours") || lowerLine.startsWith("hrs")) {
+                Double val = extractFirstNumber(trimmedLine);
+                if (val != null && val > 0 && val <= 744) {
+                    totalHours += val;
+                    matchedLines.add("[HOURS] " + trimmedLine);
                 }
-            }
-
-            // Try tabular OT
-            m = TABULAR_OT_PATTERN.matcher(trimmedLine);
-            if (m.find()) {
-                double val = Double.parseDouble(m.group(1));
-                if (val > 0 && val <= 200) {
-                    overtimeHours += val;
-                    matchedLines.add("[OT-TAB] " + trimmedLine);
-                }
-            }
-
-            // Try standalone HOURS label
-            if (!foundTotal && !foundRegular) {
-                m = HOURS_LABEL_PATTERN.matcher(trimmedLine);
-                if (m.find()) {
-                    double val = Double.parseDouble(m.group(1));
+            } else if (expectingColumnNumbers && trimmedLine.matches("^\\s*\\d{1,3}\\.\\d{1,2}\\s*$")) {
+                // "Naked" number parsing from tabular formats
+                try {
+                    double val = Double.parseDouble(trimmedLine);
                     if (val > 0 && val <= 744) {
-                        totalHours += val;
-                        foundTotal = true;
-                        matchedLines.add("[HOURS] " + trimmedLine);
+                        // Assuming it's regular hours if we don't know better, can refine later
+                        regularHours += val;
+                        matchedLines.add("[NAKED-NUM] " + trimmedLine);
                     }
+                } catch (NumberFormatException ignored) {
                 }
             }
         }
 
         // If we found regular/OT but no explicit total, calculate it
-        if (!foundTotal && foundRegular) {
+        if (totalHours == 0 && (regularHours > 0 || overtimeHours > 0)) {
             totalHours = regularHours + overtimeHours;
         }
         // If we found a total but no reg/OT breakdown, treat total as regular
-        if (foundTotal && !foundRegular) {
+        if (totalHours > 0 && regularHours == 0) {
             regularHours = totalHours - overtimeHours;
         }
 
@@ -250,6 +205,21 @@ public class HoursParser {
 
         return new PayslipResult(fileName, periodStart, periodEnd,
                 regularHours, overtimeHours, totalHours, matchedLines);
+    }
+
+    /**
+     * Extracts the first valid decimal number from a string
+     */
+    private Double extractFirstNumber(String text) {
+        String[] tokens = text.split("\\s+|:");
+        for (String token : tokens) {
+            try {
+                // remove commas if any and parse
+                return Double.parseDouble(token.replace(",", ""));
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        return null;
     }
 
     // ========================= DATE PARSING HELPERS =========================

@@ -1,4 +1,4 @@
-package com.payslip.aggregator;
+package com.payslip.aggregator.parser;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -14,7 +14,8 @@ import java.io.IOException;
 /**
  * Extracts text from PDF files.
  * First tries direct text extraction via PDFBox.
- * Falls back to OCR via Tesseract (Tess4J) if the PDF appears to be scanned/image-based.
+ * Falls back to OCR via Tesseract (Tess4J) if the PDF appears to be
+ * scanned/image-based.
  */
 public class PdfTextExtractor {
 
@@ -35,9 +36,9 @@ public class PdfTextExtractor {
             if (tessDataPath == null || tessDataPath.isEmpty()) {
                 // Common Windows install paths
                 String[] commonPaths = {
-                    "C:\\Program Files\\Tesseract-OCR\\tessdata",
-                    "C:\\Program Files (x86)\\Tesseract-OCR\\tessdata",
-                    System.getProperty("user.home") + "\\AppData\\Local\\Tesseract-OCR\\tessdata"
+                        "C:\\Program Files\\Tesseract-OCR\\tessdata",
+                        "C:\\Program Files (x86)\\Tesseract-OCR\\tessdata",
+                        System.getProperty("user.home") + "\\AppData\\Local\\Tesseract-OCR\\tessdata"
                 };
                 for (String path : commonPaths) {
                     if (new File(path).exists()) {
@@ -69,6 +70,7 @@ public class PdfTextExtractor {
 
     /**
      * Extract text from the given PDF file.
+     * 
      * @param pdfFile the PDF file to extract text from
      * @return the extracted text content
      */
@@ -81,7 +83,8 @@ public class PdfTextExtractor {
             String text = stripper.getText(document);
 
             int pageCount = document.getNumberOfPages();
-            if (pageCount == 0) pageCount = 1;
+            if (pageCount == 0)
+                pageCount = 1;
 
             // Check if text extraction yielded meaningful content
             String trimmed = text.replaceAll("\\s+", "");
@@ -94,7 +97,8 @@ public class PdfTextExtractor {
 
             // Fall back to OCR
             if (!tesseractAvailable) {
-                System.out.println("  [WARN] PDF appears scanned but Tesseract is not available. Returning sparse text.");
+                System.out
+                        .println("  [WARN] PDF appears scanned but Tesseract is not available. Returning sparse text.");
                 return text;
             }
 
@@ -119,9 +123,11 @@ public class PdfTextExtractor {
                 ocrText.append(pageText).append("\n");
                 System.out.println("  [OCR] Page " + (i + 1) + "/" + pageCount + " processed.");
             } catch (IOException e) {
-                System.err.println("  [ERROR] Failed to render page " + (i + 1) + " of " + fileName + ": " + e.getMessage());
+                System.err.println(
+                        "  [ERROR] Failed to render page " + (i + 1) + " of " + fileName + ": " + e.getMessage());
             } catch (TesseractException e) {
-                System.err.println("  [ERROR] OCR failed on page " + (i + 1) + " of " + fileName + ": " + e.getMessage());
+                System.err
+                        .println("  [ERROR] OCR failed on page " + (i + 1) + " of " + fileName + ": " + e.getMessage());
             }
         }
 

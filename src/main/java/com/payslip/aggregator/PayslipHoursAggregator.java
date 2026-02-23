@@ -1,5 +1,11 @@
 package com.payslip.aggregator;
 
+import com.payslip.aggregator.config.ConfigManager;
+import com.payslip.aggregator.model.PayslipResult;
+import com.payslip.aggregator.parser.HoursParser;
+import com.payslip.aggregator.parser.PdfTextExtractor;
+import com.payslip.aggregator.report.ReportGenerator;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,17 +25,17 @@ import java.util.List;
  */
 public class PayslipHoursAggregator {
 
-    private static final String DEFAULT_DIR = "payslips";
-    private static final String REPORT_FILE = "hours_report.txt";
-
     public static void main(String[] args) {
         System.out.println("╔══════════════════════════════════════════╗");
-        System.out.println("║     Payslip Hours Aggregator v1.0       ║");
+        System.out.println("║     Payslip Hours Aggregator v1.0        ║");
         System.out.println("╚══════════════════════════════════════════╝");
         System.out.println();
 
+        // Initialize Config Manager
+        ConfigManager config = new ConfigManager();
+
         // Discover PDF files
-        List<File> pdfFiles = discoverPdfFiles(args);
+        List<File> pdfFiles = discoverPdfFiles(args, config);
 
         if (pdfFiles.isEmpty()) {
             System.out.println("[WARN] No PDF files found!");
@@ -37,7 +43,7 @@ public class PayslipHoursAggregator {
             System.out.println("  java -jar payslip-hours-aggregator.jar [directory]");
             System.out.println("  java -jar payslip-hours-aggregator.jar file1.pdf file2.pdf ...");
             System.out.println();
-            System.out.println("Or place PDFs in the '" + DEFAULT_DIR + "' folder and run without arguments.");
+            System.out.println("Or place PDFs in configured directories (e.g. 'payslips') and run without arguments.");
             return;
         }
 
@@ -65,19 +71,23 @@ public class PayslipHoursAggregator {
         System.out.println();
 
         // Generate report
-        reporter.generateReport(results, REPORT_FILE);
+        reporter.generateReport(results, config.getReportFilePath());
     }
 
     /**
      * Discover PDF files from command-line arguments.
-     * Supports: directory path, list of file paths, or default directory.
+     * Supports: directory path, list of file paths, or configured directories.
      */
-    private static List<File> discoverPdfFiles(String[] args) {
+    private static List<File> discoverPdfFiles(String[] args, ConfigManager config) {
         List<File> pdfFiles = new ArrayList<>();
 
         if (args.length == 0) {
-            // Use default directory
-            return findPdfsInDirectory(new File(DEFAULT_DIR));
+            // Use configured directories
+            List<String> dirs = config.getPdfDirectories();
+            for (String dirStr : dirs) {
+                pdfFiles.addAll(findPdfsInDirectory(new File(dirStr)));
+            }
+            return pdfFiles;
         }
 
         if (args.length == 1) {
